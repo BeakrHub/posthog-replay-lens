@@ -20,6 +20,7 @@ export const DEFAULT_JOB_CONFIG = {
   parallelism: 1,
   candidateLimit: 100,
   recordingIds: [],
+  excludeRecordingIds: [],
   speed: 12,
   minClipSeconds: 12,
   maxClipSeconds: 45,
@@ -82,6 +83,7 @@ export function buildJobConfig(input = {}) {
     parallelism: clampNumber(input.parallelism, DEFAULT_JOB_CONFIG.parallelism, 1, 5),
     candidateLimit: clampNumber(input.candidateLimit, DEFAULT_JOB_CONFIG.candidateLimit, 10, 250),
     recordingIds: Array.isArray(input.recordingIds) ? input.recordingIds.map(String).filter(Boolean) : [],
+    excludeRecordingIds: Array.isArray(input.excludeRecordingIds) ? input.excludeRecordingIds.map(String).filter(Boolean) : [],
     speed: clampNumber(input.speed, DEFAULT_JOB_CONFIG.speed, 1, 60),
     minClipSeconds: clampNumber(input.minClipSeconds, DEFAULT_JOB_CONFIG.minClipSeconds, 6, 60),
     maxClipSeconds: clampNumber(input.maxClipSeconds, DEFAULT_JOB_CONFIG.maxClipSeconds, 10, 90),
@@ -339,6 +341,7 @@ export async function listFilteredRecordings({ config, projectId, jobConfig }) {
 export function selectRecordings({ recordings, jobConfig, explicitIds = new Set(), budget = jobConfig.count * 4 }) {
   const selected = [];
   const seenIds = new Set();
+  const excludedIds = new Set(jobConfig.excludeRecordingIds || []);
   const seenDuplicateKeys = new Set();
   const userCounts = new Map();
   const hasUserFilter = splitTerms(jobConfig.userIncludes).length > 0;
@@ -347,6 +350,7 @@ export function selectRecordings({ recordings, jobConfig, explicitIds = new Set(
   for (const recording of sorted) {
     if (selected.length >= budget) break;
     if (seenIds.has(recording.id)) continue;
+    if (!explicitIds.size && excludedIds.has(recording.id)) continue;
     if (!explicitIds.size && !applyRecordingFilters(recording, jobConfig)) continue;
 
     const duplicateKey = recordingDuplicateKey(recording);

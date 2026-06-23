@@ -32,6 +32,7 @@ Replay Lens is an independent open-source tool. It is not affiliated with, spons
 - Embed generated replay videos next to Gemini findings.
 - Download job results as JSON or an agent-ready Markdown handoff.
 - Run the same analysis pipeline from cron with `npm run analyze`.
+- Run a built-in scheduled server loop that skips already-seen replay IDs, stores merged flagged issues, and sends Slack summaries when configured.
 
 ## Requirements
 
@@ -138,13 +139,27 @@ Railway provides `PORT`; do not hard-code it. In production the server binds `0.
 
 When `REPLAY_LENS_PASSWORD` is set, the web UI, API, and generated replay artifacts require a password session cookie. Leave it unset only for local-only development.
 
-For an automated scheduled loop, create a second Railway service from the same repo, set the same variables, set its start command to a one-off analysis, and configure Railway's **Cron Schedule**:
+For the built-in unattended loop, keep one long-running Railway web service and set:
 
-```bash
-npm run analyze -- --count 10 --parallelism 2 --speed 12 --candidate-limit 100 --max-age-days 1 --min-active-seconds 20 --min-activity-score 10 --max-per-user 1
+```text
+REPLAY_LENS_PUBLIC_URL=https://your-service.up.railway.app
+AUTOMATION_ENABLED=true
+AUTOMATION_INTERVAL_HOURS=5
+AUTOMATION_COUNT=10
+AUTOMATION_PARALLELISM=2
+AUTOMATION_CANDIDATE_LIMIT=150
+AUTOMATION_MAX_AGE_DAYS=7
+AUTOMATION_MIN_ACTIVE_SECONDS=20
+AUTOMATION_MIN_ACTIVITY_SCORE=10
+AUTOMATION_MAX_PER_USER=1
+SLACK_WEBHOOK_URL=...
 ```
 
-Railway cron services should exit when the task finishes. `npm run analyze` already does that.
+Attach a Railway volume mounted at `/app/artifacts` if you want job artifacts and `artifacts/automation/state.json` to survive redeploys. That state file is what prevents the five-hour loop from analyzing the same recording IDs repeatedly.
+
+The web UI includes a **Scheduled Replay Watch** panel that shows whether automation is enabled, when the next run is scheduled, how many replay IDs have been seen, recent runs, Slack status, and the exact flagged issues with user/date/recording context. You can also start the automation job manually from that panel.
+
+The automated loop creates an agent-ready Markdown handoff for each batch. Linear ticket creation and PR creation should be layered on top with separate Linear/GitHub credentials and a PR-only approval workflow.
 
 ## Outputs
 

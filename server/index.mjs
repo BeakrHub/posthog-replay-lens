@@ -7,6 +7,15 @@ import { applyRuntimeConfig, getConfig, loadDotEnv, publicConfig, saveLocalEnv }
 import { listGeminiModels } from "./gemini.mjs";
 import { compactRecording, discoverProject, searchPersons } from "./posthog.mjs";
 import {
+  automationConfigFromEnv,
+  automationSummary,
+  buildAutomationJobConfig,
+  loadAutomationState,
+  saveAutomationState,
+  sendSlackSummary,
+  updateStateFromJob
+} from "./automation.mjs";
+import {
   buildAgentHandoffMarkdown,
   buildExportPayload,
   buildJobConfig,
@@ -26,6 +35,16 @@ const artifactsRoot = path.join(repoRoot, "artifacts");
 const jobs = new Map();
 const jobPromises = new Map();
 const authCookieName = "replay_lens_session";
+const automationRuntime = {
+  running: false,
+  currentJobId: null,
+  nextRunAt: null,
+  lastStartedAt: null,
+  lastFinishedAt: null,
+  lastError: null,
+  lastSlack: null,
+  timer: null
+};
 
 async function getJobById(id) {
   const runtimeJob = jobs.get(id);
@@ -76,6 +95,105 @@ function trackJobRun(job) {
     });
   jobPromises.set(job.id, promise);
   return promise;
+}
+
+function automationRuntimePublic() {
+  return {
+    running: automationRuntime.running,
+    currentJobId: automationRuntime.currentJobId,
+    nextRunAt: automationRuntime.nextRunAt,
+    lastStartedAt: automationRuntime.lastStartedAt,
+    lastFinishedAt: automationRuntime.lastFinishedAt,
+    lastError: automationRuntime.lastError,
+    lastSlack: automationRuntime.lastSlack
+  };
+}
+
+async function startAutomationRun(trigger = "manual") {
+  if (automationRuntime.running) {
+    const error = new Error("Automation is already running.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const automationConfig = automationConfigFromEnv();
+  const state = await loadAutomationState(artifactsRoot);
+  const job = makeJob({
+    artifactsRoot,
+    config: buildAutomationJobConfig(automationConfig, state)
+  });
+  job.automation = {
+    trigger,
+    startedAt: new Date().toISOString(),
+    excludedSeenRecordingCount: state.seenRecordingIds?.length || 0
+  };
+  jobs.set(job.id, job);
+  await saveJob(job);
+
+  automationRuntime.running = true;
+  automationRuntime.currentJobId = job.id;
+  automationRuntime.lastStartedAt = job.startedAt;
+  automationRuntime.lastFinishedAt = null;
+  automationRuntime.lastError = null;
+  automationRuntime.lastSlack = null;
+
+  const promise = runJob({ job, config: getConfig() })
+    .then(async (finishedJob) => {
+      const latestState = await loadAutomationState(artifactsRoot);
+      const { state: nextState, newIssues } = updateStateFromJob(latestState, finishedJob, automationConfig);
+      await saveAutomationState(artifactsRoot, nextState);
+      try {
+        automationRuntime.lastSlack = await sendSlackSummary({
+          job: finishedJob,
+          config: automationConfig,
+          newIssues,
+          state: nextState
+        });
+      } catch (error) {
+        automationRuntime.lastSlack = { sent: false, reason: error.message };
+        console.error(error);
+      }
+      return finishedJob;
+    })
+    .catch((error) => {
+      automationRuntime.lastError = error.stack || error.message;
+      console.error(error);
+    })
+    .finally(() => {
+      automationRuntime.running = false;
+      automationRuntime.currentJobId = null;
+      automationRuntime.lastFinishedAt = new Date().toISOString();
+      jobPromises.delete(job.id);
+    });
+  jobPromises.set(job.id, promise);
+  void promise;
+
+  return job;
+}
+
+function automationIntervalMs(config = automationConfigFromEnv()) {
+  return Math.max(60_000, Math.round(Number(config.intervalHours || 5) * 60 * 60 * 1000));
+}
+
+function scheduleAutomationRun(delayMs) {
+  if (automationRuntime.timer) clearTimeout(automationRuntime.timer);
+  automationRuntime.nextRunAt = new Date(Date.now() + delayMs).toISOString();
+  automationRuntime.timer = setTimeout(async () => {
+    try {
+      if (!automationRuntime.running) await startAutomationRun("schedule");
+    } catch (error) {
+      automationRuntime.lastError = error.stack || error.message;
+      console.error(error);
+    } finally {
+      scheduleAutomationRun(automationIntervalMs());
+    }
+  }, delayMs);
+}
+
+function startAutomationScheduler() {
+  const config = automationConfigFromEnv();
+  if (!config.enabled) return;
+  scheduleAutomationRun(config.runOnStart ? 5000 : automationIntervalMs(config));
 }
 
 async function stopRuntimeJob(job) {
@@ -288,6 +406,30 @@ app.get("/api/gemini/models", async (_req, res, next) => {
   }
 });
 
+app.get("/api/automation", async (_req, res, next) => {
+  try {
+    const config = automationConfigFromEnv();
+    const state = await loadAutomationState(artifactsRoot);
+    res.json(automationSummary({ state, config, runtime: automationRuntimePublic() }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/automation/run", async (_req, res, next) => {
+  try {
+    const job = await startAutomationRun("manual");
+    res.status(202).json({
+      ok: true,
+      job: sanitizeJob(job),
+      automation: automationRuntimePublic()
+    });
+  } catch (error) {
+    if (error.statusCode) res.status(error.statusCode).json({ error: error.message });
+    else next(error);
+  }
+});
+
 app.get("/api/users", async (req, res, next) => {
   try {
     const config = getConfig();
@@ -466,4 +608,5 @@ const port = getConfig().port;
 const host = process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 app.listen(port, host, () => {
   console.log(`Replay Lens listening on http://${host}:${port}`);
+  startAutomationScheduler();
 });

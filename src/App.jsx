@@ -1,7 +1,9 @@
 import {
   Activity,
   AlertTriangle,
+  Bell,
   Bug,
+  CalendarClock,
   CheckCircle2,
   Copy,
   Clock3,
@@ -11,6 +13,7 @@ import {
   FileJson,
   Filter,
   Gauge,
+  GitPullRequest,
   Loader2,
   Play,
   RefreshCw,
@@ -753,6 +756,133 @@ function BatchStat({ label, value, tone }) {
   );
 }
 
+function AutomationPanel({ automation, loading, running, onRefresh, onRunNow }) {
+  const config = automation?.config || {};
+  const runtime = automation?.runtime || {};
+  const state = automation?.state || {};
+  const issues = asList(state.issues);
+  const runs = asList(state.runs);
+  const slackReady = Boolean(config.hasSlackWebhook);
+
+  return (
+    <section className="panel automation-panel">
+      <div className="section-head">
+        <div>
+          <span>Automated Loop</span>
+          <h2>Scheduled Replay Watch</h2>
+        </div>
+        <div className="section-actions">
+          <Bell size={20} aria-hidden="true" />
+          <span className={cn("setup-pill", config.enabled && "setup-pill-good")}>
+            {runtime.running ? "running now" : config.enabled ? "scheduled" : "manual only"}
+          </span>
+          <button className="icon-button" disabled={loading} onClick={onRefresh} type="button" title="Refresh automation status">
+            {loading ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
+          </button>
+        </div>
+      </div>
+      <div className="automation-summary">
+        <BatchStat label="Cadence" value={config.enabled ? `Every ${config.intervalHours}h` : "Off"} />
+        <BatchStat label="Next run" value={config.enabled ? fmtDate(runtime.nextRunAt) : "not scheduled"} />
+        <BatchStat label="Seen replays" value={Number(state.seenRecordingCount || 0).toLocaleString()} />
+        <BatchStat label="Open flags" value={Number(state.issueCount || 0).toLocaleString()} tone={state.issueCount ? "warn" : "good"} />
+        <BatchStat label="Slack" value={slackReady ? "configured" : "missing"} tone={slackReady ? "good" : "warn"} />
+      </div>
+      <div className="automation-actions">
+        <button className="primary compact-action" disabled={running || runtime.running} onClick={onRunNow} type="button">
+          {running || runtime.running ? <Loader2 className="spin" size={17} /> : <Play size={17} />}
+          Run Automation Now
+        </button>
+        <div className="fineprint automation-fineprint">
+          <span>
+            Scheduled runs use the environment automation settings, skip recording IDs already seen in `artifacts/automation/state.json`, then merge exact bugs into this dashboard.
+          </span>
+          <span>
+            Slack sends the run summary and agent handoff link when `SLACK_WEBHOOK_URL` is configured. Linear ticket and PR creation should be added as a separate token-gated agent step.
+          </span>
+          {runtime.lastSlack ? <span>Last Slack: {runtime.lastSlack.sent ? "sent" : runtime.lastSlack.reason}</span> : null}
+          {runtime.lastError ? <span className="automation-error">Last error: {runtime.lastError}</span> : null}
+        </div>
+      </div>
+      <div className="automation-grid">
+        <section>
+          <h3>Flagged Issues</h3>
+          <div className="automation-issue-list">
+            {issues.length ? (
+              issues.map((issue) => (
+                <article className="automation-issue" key={issue.id}>
+                  <div className="bug-head">
+                    <strong>{issue.title || "Untitled issue"}</strong>
+                    <span className={cn("severity", `severity-${String(issue.severity || "").toLowerCase()}`)}>
+                      {issue.severity || "unknown"}
+                    </span>
+                  </div>
+                  <p>{issue.evidence || issue.userImpact || "No evidence text stored."}</p>
+                  <div className="issue-meta">
+                    <span>{Number(issue.occurrenceCount || 1)} occurrence{Number(issue.occurrenceCount || 1) === 1 ? "" : "s"}</span>
+                    <span>Last seen {fmtDate(issue.lastSeenAt)}</span>
+                    <span>{asList(issue.affectedRecordingIds).length} replay{asList(issue.affectedRecordingIds).length === 1 ? "" : "s"}</span>
+                    {issue.jobs?.[0]?.id ? (
+                      <a href={`/api/jobs/${encodeURIComponent(issue.jobs[0].id)}/agent-handoff.md`} download>
+                        <Download size={13} /> Agent brief
+                      </a>
+                    ) : null}
+                  </div>
+                  {asList(issue.affectedRecordings).length ? (
+                    <div className="issue-recordings">
+                      {issue.affectedRecordings.slice(0, 3).map((recording) => (
+                        <div key={recording.id}>
+                          <span>{recording.user || "user_unknown"}</span>
+                          <span>{fmtDate(recording.startedAt)}</span>
+                          <span>{recording.route || recording.url || recording.id}</span>
+                          {recording.posthogUrl ? (
+                            <a href={recording.posthogUrl} target="_blank" rel="noreferrer">
+                              <ExternalLink size={13} /> PostHog
+                            </a>
+                          ) : null}
+                          {recording.artifactUrl ? (
+                            <a href={recording.artifactUrl} target="_blank" rel="noreferrer">
+                              <Video size={13} /> Clip
+                            </a>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              ))
+            ) : (
+              <EmptyState icon={Bug} title="No automated flags yet" body="Run automation or wait for the scheduler to finish a batch." />
+            )}
+          </div>
+        </section>
+        <section>
+          <h3>Recent Runs</h3>
+          <div className="automation-run-list">
+            {runs.length ? (
+              runs.slice(0, 8).map((run) => (
+                <article key={run.id}>
+                  <div>
+                    <strong>{run.jobId}</strong>
+                    <StatusPill status={run.status} />
+                  </div>
+                  <span>{fmtDate(run.startedAt)} · {run.resultCount} analyzed · {run.issueCount} issue{run.issueCount === 1 ? "" : "s"} · {fmtCost(run.costs)}</span>
+                  {run.summary ? <p>{run.summary}</p> : null}
+                  <a href={`/api/jobs/${encodeURIComponent(run.jobId)}/agent-handoff.md`} download>
+                    <GitPullRequest size={14} /> Agent handoff
+                  </a>
+                </article>
+              ))
+            ) : (
+              <EmptyState icon={CalendarClock} title="No scheduled runs yet" body="When the five-hour loop runs, its history appears here." />
+            )}
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function recordingStatus(job, recording) {
   const id = recording?.id;
   if (!id) return "pending";
@@ -968,6 +1098,7 @@ export default function App() {
   const [candidateLoadedAt, setCandidateLoadedAt] = useState("");
   const [project, setProject] = useState(null);
   const [jobs, setJobs] = useState([]);
+  const [automation, setAutomation] = useState(null);
   const [activeJobId, setActiveJobId] = useState("");
   const [form, setForm] = useState(DEFAULT_FORM);
   const [connectionForm, setConnectionForm] = useState(DEFAULT_CONNECTION_FORM);
@@ -984,6 +1115,8 @@ export default function App() {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingRecordings, setLoadingRecordings] = useState(false);
   const [loadingJobs, setLoadingJobs] = useState(false);
+  const [loadingAutomation, setLoadingAutomation] = useState(false);
+  const [runningAutomation, setRunningAutomation] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
   const candidatesRef = useRef(null);
@@ -1071,6 +1204,16 @@ export default function App() {
     }
   }, [activeJobId]);
 
+  const loadAutomation = useCallback(async () => {
+    setLoadingAutomation(true);
+    try {
+      const body = await fetchJson("/api/automation");
+      setAutomation(body);
+    } finally {
+      setLoadingAutomation(false);
+    }
+  }, []);
+
   const loadGeminiModels = useCallback(async () => {
     setLoadingGeminiModels(true);
     setModelError("");
@@ -1122,11 +1265,11 @@ export default function App() {
   const refreshAppState = useCallback(async () => {
     setError("");
     try {
-      await Promise.all([loadHealth(), loadJobs()]);
+      await Promise.all([loadHealth(), loadJobs(), loadAutomation()]);
     } catch (err) {
       setError(err.message);
     }
-  }, [loadHealth, loadJobs]);
+  }, [loadAutomation, loadHealth, loadJobs]);
 
   const loadRecordings = useCallback(async () => {
     setLoadingRecordings(true);
@@ -1194,6 +1337,23 @@ export default function App() {
     }
   }, [blocksStartForStaleCandidates, form, startRecordingIds, validationErrors]);
 
+  const runAutomationNow = useCallback(async () => {
+    setRunningAutomation(true);
+    setError("");
+    try {
+      const body = await fetchJson("/api/automation/run", { method: "POST" });
+      if (body?.job) {
+        setJobs((current) => [body.job, ...current.filter((job) => job.id !== body.job.id)]);
+        setActiveJobId(body.job.id);
+      }
+      await loadAutomation();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRunningAutomation(false);
+    }
+  }, [loadAutomation]);
+
   const deleteJob = useCallback(async (jobId, active = false) => {
     if (!jobId) return;
     const prompt = active
@@ -1240,7 +1400,8 @@ export default function App() {
   useEffect(() => {
     loadHealth().catch((err) => setError(err.message));
     loadJobs().catch((err) => setError(err.message));
-  }, [loadHealth, loadJobs]);
+    loadAutomation().catch((err) => setError(err.message));
+  }, [loadAutomation, loadHealth, loadJobs]);
 
   useEffect(() => {
     if (health?.config?.hasGeminiCredential) loadGeminiModels();
@@ -1249,9 +1410,10 @@ export default function App() {
   useEffect(() => {
     const id = window.setInterval(() => {
       loadJobs().catch((err) => setError(err.message));
+      loadAutomation().catch((err) => setError(err.message));
     }, isActiveStatus(activeJob?.status) ? 2500 : 6000);
     return () => window.clearInterval(id);
-  }, [activeJob?.status, loadJobs]);
+  }, [activeJob?.status, loadAutomation, loadJobs]);
 
   const toggleSelected = (id) => {
     setSelectedIds((current) => {
@@ -1321,6 +1483,14 @@ export default function App() {
         message={configMessage}
         onChange={updateConnectionForm}
         onSave={saveConnectionConfig}
+      />
+
+      <AutomationPanel
+        automation={automation}
+        loading={loadingAutomation}
+        running={runningAutomation}
+        onRefresh={loadAutomation}
+        onRunNow={runAutomationNow}
       />
 
       <WorkflowStrip candidatesLoaded={recordings.length} activeJob={activeJob} />

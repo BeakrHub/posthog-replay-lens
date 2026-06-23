@@ -23,7 +23,7 @@
     "analyze": "node scripts/run-once.mjs",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "check": "node --check server/index.mjs && node --check server/posthog.mjs && node --check server/replay.mjs && node --check server/gemini.mjs && node --check server/job-runner.mjs && node --check scripts/run-once.mjs && vite build"
+    "check": "node --check server/index.mjs && node --check server/posthog.mjs && node --check server/replay.mjs && node --check server/gemini.mjs && node --check server/job-runner.mjs && node --check server/automation.mjs && node --check scripts/run-once.mjs && vite build"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
