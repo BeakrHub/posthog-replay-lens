@@ -447,7 +447,7 @@ export async function analyzeReplayWithGeminiDetailed({ config, mp4Path, metadat
   throwIfAborted(signal);
   const base64 = bytes.toString("base64");
   const prompt = [
-    "You are reviewing a sped-up PostHog session replay video for product bugs, UX friction, and frustration signals.",
+    "You are reviewing a sped-up PostHog session replay video for product bugs, UX friction, frustration signals, and customer workflow insights.",
     "The attached video is a local reconstruction of a real PostHog session replay. It is not a hand-authored or perfectly captured video.",
     "PostHog/rrweb replays can contain artifacts: masked text, missing frames, blank periods, compressed timing, cursor jitter, delayed DOM updates, or imperfect local rendering.",
     "The replay video may be active-compressed and auto-sped-up: long inactive gaps are removed before rendering so Gemini does not spend tokens on idle periods. Treat timestamps as approximate positions in the compressed video, not original wall-clock time.",
@@ -456,14 +456,16 @@ export async function analyzeReplayWithGeminiDetailed({ config, mp4Path, metadat
     "Do not report replay reconstruction artifacts as product bugs unless the video clearly shows the actual product UI behaving incorrectly for the user.",
     "Be strict: only call something an exact bug when the video provides visual evidence. If likely but not proven, put it under ux_friction or open_questions.",
     "Look for frustration signals such as repeated clicks, rage clicks, backtracking, stalled waiting, repeated typing/deleting, error messages, failed tool calls, confusing empty states, truncation, broken layout, or loops.",
-    "Return concise JSON only with keys: summary, likely_user_goal, user_behavior, frustration_signals, exact_bugs, ux_friction, evidence_timeline, next_actions, open_questions, confidence.",
+    "Bugs are the primary objective. Customer insight is secondary: capture what the user is trying to accomplish, which Beakr workflows/features they use, and any observable use case or customer intent.",
+    "Return concise JSON only with keys: summary, likely_user_goal, user_behavior, key_use_case, beakr_workflow, customer_insights, frustration_signals, exact_bugs, ux_friction, evidence_timeline, next_actions, open_questions, confidence.",
+    "customer_insights should be 1-4 evidence-backed observations about how this user is using Beakr. Do not infer identity, private business context, or intent that is not visible.",
     "Each exact_bugs item must include: title, severity, timestamp_estimate, visual_evidence, user_impact, reproduction_steps, why_this_is_a_bug.",
     "Each frustration_signals and ux_friction item must include: timestamp_estimate, signal, evidence, severity.",
     "evidence_timeline should be 3-8 timestamped observations from the video.",
     "Do not invent information that is not visible in the video.",
     analysisFocus
       ? `Additional operator focus for this run: ${analysisFocus}`
-      : "Additional operator focus for this run: default to frustration, exact bugs, broken flows, confusing states, and failed outcomes.",
+      : "Additional operator focus for this run: prioritize exact bugs and failed outcomes first, then summarize key Beakr use cases and customer workflow insights.",
     `Recording metadata: ${JSON.stringify(metadata)}`
   ].join("\n");
 
@@ -486,16 +488,20 @@ export async function analyzeReplayWithGemini(args) {
 export async function synthesizeBatchDetailed({ config, analyses, analysisFocus = "", signal }) {
   throwIfAborted(signal);
   const prompt = [
-    "You are synthesizing PostHog replay analyses for product bugs, frustration, and user behavior.",
+    "You are synthesizing PostHog replay analyses for product bugs, frustration, user behavior, and customer workflow insights.",
     "These analyses came from local reconstructions of real PostHog session replays, so do not treat replay/rendering artifacts as product bugs unless the underlying analysis contains direct product-UI evidence.",
     "When synthesizing, suppress likely PostHog replay artifacts such as gray/blank placeholders, masked or ph-no-capture content, missing document/PDF previews, missing iframe/canvas/video/audio/third-party embeds, unloaded assets, or replay-only resource errors. Do not promote these to exact bugs unless multiple analyses contain independent evidence that the live product failed outside replay capture.",
-    "Return JSON only with keys: executive_summary, exact_bugs_prioritized, repeated_frustration_patterns, user_behavior_patterns, quick_wins, needs_more_evidence.",
+    "Bugs are the primary objective. Put exact bugs first and do not let customer-insight sections bury or dilute bug findings.",
+    "Also summarize how people are using Beakr: key use cases, common workflows, customer intent, feature adoption, and repeated successful behaviors when evidence-backed.",
+    "Return JSON only with keys: executive_summary, exact_bugs_prioritized, key_use_cases, customer_insights, user_behavior_patterns, repeated_frustration_patterns, quick_wins, needs_more_evidence.",
     "Merge duplicate bugs across recordings. Each exact_bugs_prioritized item must include: title, severity, affected_recording_ids, evidence, suspected_root_cause, reproduction_steps, user_impact, confidence.",
+    "Each key_use_cases item should include: use_case, affected_recording_ids, evidence, frequency, product_area, customer_value.",
+    "Each customer_insights item should include: insight, affected_recording_ids, evidence, implication, confidence.",
     "Do not promote friction to an exact bug unless at least one recording analysis has direct evidence.",
     "Use exact recording IDs in every evidence-backed claim.",
     analysisFocus
       ? `Additional operator focus for this run: ${analysisFocus}`
-      : "Additional operator focus for this run: default to frustration, exact bugs, broken flows, confusing states, and failed outcomes.",
+      : "Additional operator focus for this run: prioritize exact bugs and failed outcomes first, then summarize key Beakr use cases and customer workflow insights.",
     `Input analyses: ${JSON.stringify(analyses)}`
   ].join("\n");
   const body = await generateContent({ config, prompt, label: "Gemini synthesis", signal });

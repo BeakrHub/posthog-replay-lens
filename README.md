@@ -23,6 +23,7 @@ Replay Lens is an independent open-source tool. It is not affiliated with, spons
 - Shows estimated Gemini cost for each replay analysis and the full batch using token usage returned by Gemini responses.
 - Lets you stop a running batch while keeping completed replay analyses and downloads.
 - Produces per-recording JSON plus a structured aggregate bug/friction report with prioritized bugs, patterns, quick wins, and evidence gaps.
+- Adds secondary customer insight synthesis for key use cases, Beakr workflows, feature adoption, and observable ways customers use the product, while keeping bugs as the primary output.
 - Filter recordings by URL, specific users, age, active time, click count, keypress count, and ongoing status.
 - Uses PostHog HogQL query filtering for user, URL, and age filters when available, then applies local replay-quality filters.
 - Search PostHog persons by email/name and click user chips into the specific-user filter.

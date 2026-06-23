@@ -51,7 +51,7 @@ const DEFAULT_FORM = {
   userIncludes: "",
   urlIncludes: "",
   urlExcludes: "",
-  analysisFocus: "Look for frustration, repeated failed actions, confusing empty states, broken layouts, failed tool calls, and exact bugs with visual evidence.",
+  analysisFocus: "Primary: find frustration, repeated failed actions, confusing empty states, broken layouts, failed tool calls, and exact bugs with visual evidence. Secondary: summarize key Beakr use cases, workflows, feature adoption, and customer insights.",
   width: 1280,
   height: 720
 };
@@ -742,7 +742,7 @@ function BugList({ bugs }) {
 function shortText(value, fallback = "No details returned.") {
   if (typeof value === "string" && value.trim()) return value.trim();
   if (value && typeof value === "object") {
-    return value.summary || value.pattern || value.action || value.evidence || value.title || fallback;
+    return value.use_case || value.insight || value.summary || value.pattern || value.action || value.customer_value || value.evidence || value.title || fallback;
   }
   return fallback;
 }
@@ -1047,6 +1047,8 @@ function SynthesisPanel({ synthesis }) {
     return <section className="panel synthesis"><EmptyState icon={Sparkles} title="Aggregate report pending" body="A cross-recording report appears here after the batch synthesizes completed replay analyses." /></section>;
   }
   const bugs = asList(synthesis.exact_bugs_prioritized);
+  const keyUseCases = asList(synthesis.key_use_cases);
+  const customerInsights = asList(synthesis.customer_insights);
   const friction = asList(synthesis.repeated_frustration_patterns);
   const quickWins = asList(synthesis.quick_wins);
   const evidenceGaps = asList(synthesis.needs_more_evidence);
@@ -1065,13 +1067,22 @@ function SynthesisPanel({ synthesis }) {
       <div className="aggregate-stats">
         <BatchStat label="Exact bugs" value={bugs.length} tone={bugs.length ? "warn" : "good"} />
         <BatchStat label="High/Critical" value={criticalOrHigh} tone={criticalOrHigh ? "warn" : undefined} />
-        <BatchStat label="Patterns" value={friction.length} />
+        <BatchStat label="Use cases" value={keyUseCases.length} />
+        <BatchStat label="Insights" value={customerInsights.length} />
         <BatchStat label="Quick wins" value={quickWins.length} />
       </div>
       <div className="aggregate-grid">
         <section className="aggregate-section priority">
           <h3>Prioritized Exact Bugs</h3>
           <BugList bugs={bugs} />
+        </section>
+        <section className="aggregate-section">
+          <h3>Key Beakr Use Cases</h3>
+          <AggregateList items={keyUseCases} empty="None reported." />
+        </section>
+        <section className="aggregate-section">
+          <h3>Customer Insights</h3>
+          <AggregateList items={customerInsights} empty="None reported." />
         </section>
         <section className="aggregate-section">
           <h3>Frustration Patterns</h3>

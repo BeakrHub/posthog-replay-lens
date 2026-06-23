@@ -681,6 +681,23 @@ function listBugMarkdown(bugs = []) {
     .join("\n");
 }
 
+function listInsightMarkdown(items = [], keys = ["insight", "use_case", "summary"]) {
+  if (!Array.isArray(items) || !items.length) return "- None reported.\n";
+  return items
+    .map((item, index) => {
+      if (typeof item === "string") return `- ${item}`;
+      const title = keys.map((key) => item?.[key]).find(Boolean) || item?.title || `Insight ${index + 1}`;
+      const evidence = item?.evidence ? `\n  - Evidence: ${item.evidence}` : "";
+      const recordings = Array.isArray(item?.affected_recording_ids) && item.affected_recording_ids.length
+        ? `\n  - Recordings: ${item.affected_recording_ids.join(", ")}`
+        : "";
+      const implication = item?.implication ? `\n  - Implication: ${item.implication}` : "";
+      const value = item?.customer_value ? `\n  - Customer value: ${item.customer_value}` : "";
+      return `- ${title}${evidence}${recordings}${implication}${value}`;
+    })
+    .join("\n");
+}
+
 function formatEstimatedCost(cost) {
   if (!cost || cost.estimatedUsd === null || cost.estimatedUsd === undefined) return "n/a";
   if (
@@ -719,6 +736,14 @@ export function buildAgentHandoffMarkdown(job) {
     "## Prioritized Exact Bugs",
     "",
     listBugMarkdown(safe.synthesis?.exact_bugs_prioritized),
+    "",
+    "## Key Beakr Use Cases",
+    "",
+    listInsightMarkdown(safe.synthesis?.key_use_cases, ["use_case", "insight", "summary"]),
+    "",
+    "## Customer Insights",
+    "",
+    listInsightMarkdown(safe.synthesis?.customer_insights, ["insight", "use_case", "summary"]),
     "",
     "## Per-Recording Findings",
     ""

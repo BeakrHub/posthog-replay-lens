@@ -80,7 +80,7 @@ export function automationConfigFromEnv(env = process.env) {
     geminiModel: stringValue(env.AUTOMATION_GEMINI_MODEL),
     analysisFocus: stringValue(
       env.AUTOMATION_ANALYSIS_FOCUS,
-      "Find evidence-backed production bugs, user frustration, broken flows, confusing states, failed actions, and exact UI issues. Ignore PostHog replay capture artifacts."
+      "Primary: find evidence-backed production bugs, user frustration, broken flows, confusing states, failed actions, and exact UI issues. Secondary: summarize key Beakr use cases, customer workflows, feature adoption, and how people are using the product. Ignore PostHog replay capture artifacts."
     ),
     slackWebhookUrl: stringValue(env.SLACK_WEBHOOK_URL),
     slackMention: stringValue(env.SLACK_MENTION),
@@ -394,6 +394,27 @@ function issueLine(issue, index) {
   return `${index + 1}. ${issue.title}${severity}${recordings}${links}`;
 }
 
+function insightText(item, keys) {
+  if (typeof item === "string") return item;
+  if (!item || typeof item !== "object") return "";
+  for (const key of keys) {
+    if (item[key]) return String(item[key]);
+  }
+  return item.summary || item.pattern || item.title || item.evidence || "";
+}
+
+function recordingCountSuffix(item) {
+  const count = Array.isArray(item?.affected_recording_ids) ? item.affected_recording_ids.length : 0;
+  return count ? ` - ${count} replay${count === 1 ? "" : "s"}` : "";
+}
+
+function insightLine(item, index, keys) {
+  const text = insightText(item, keys);
+  const suffix = recordingCountSuffix(item);
+  const implication = item?.implication ? ` Implication: ${item.implication}` : "";
+  return text ? `${index + 1}. ${text}${suffix}.${implication}` : "";
+}
+
 export function buildSlackText({ job, config, newIssues, state }) {
   const lines = [];
   const prefix = config.slackMention ? `${config.slackMention} ` : "";
@@ -404,6 +425,22 @@ export function buildSlackText({ job, config, newIssues, state }) {
     newIssues.slice(0, 8).forEach((issue, index) => lines.push(issueLine(issue, index)));
   } else {
     lines.push("No exact bugs were flagged in this run.");
+  }
+  const keyUseCases = Array.isArray(job.synthesis?.key_use_cases) ? job.synthesis.key_use_cases : [];
+  if (keyUseCases.length) {
+    lines.push("Key Beakr use cases:");
+    keyUseCases.slice(0, 5).forEach((item, index) => {
+      const line = insightLine(item, index, ["use_case", "insight", "summary"]);
+      if (line) lines.push(line);
+    });
+  }
+  const customerInsights = Array.isArray(job.synthesis?.customer_insights) ? job.synthesis.customer_insights : [];
+  if (customerInsights.length) {
+    lines.push("Customer insights:");
+    customerInsights.slice(0, 5).forEach((item, index) => {
+      const line = insightLine(item, index, ["insight", "use_case", "summary"]);
+      if (line) lines.push(line);
+    });
   }
   const posthogLinks = resultPostHogLinks(job);
   if (posthogLinks.length) lines.push(`PostHog replays: ${posthogLinks.join(", ")}`);
