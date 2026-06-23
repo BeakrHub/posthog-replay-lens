@@ -17,6 +17,7 @@
   },
   "scripts": {
     "dev": "concurrently \"npm:server\" \"npm:web\"",
+    "start": "node server/index.mjs",
     "server": "node server/index.mjs",
     "web": "vite --host 127.0.0.1",
     "analyze": "node scripts/run-once.mjs",

@@ -280,12 +280,26 @@ app.use("/api", (req, res) => {
   });
 });
 
+const distRoot = path.join(repoRoot, "dist");
+try {
+  await fs.access(path.join(distRoot, "index.html"));
+  app.use(express.static(distRoot));
+  app.get(/.*/, (_req, res) => {
+    res.sendFile(path.join(distRoot, "index.html"));
+  });
+} catch {
+  if (process.env.NODE_ENV === "production") {
+    console.warn("No dist/index.html found; run npm run build before starting production server.");
+  }
+}
+
 app.use((error, _req, res, _next) => {
   console.error(error);
   res.status(500).json({ error: error.message });
 });
 
 const port = getConfig().port;
-app.listen(port, "127.0.0.1", () => {
-  console.log(`Replay Lens API listening on http://127.0.0.1:${port}`);
+const host = process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
+app.listen(port, host, () => {
+  console.log(`Replay Lens listening on http://${host}:${port}`);
 });

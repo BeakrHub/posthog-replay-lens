@@ -116,6 +116,33 @@ Example crontab entry:
 0 9 * * * cd /path/to/replay_lens && npm run analyze -- --count 10 --speed 12 --max-age-days 1 >> artifacts/cron.log 2>&1
 ```
 
+## Railway Deployment
+
+Replay Lens includes a `Dockerfile` and `railway.toml` for Railway. The Docker image uses the official Playwright base image, installs `ffmpeg`, builds the React UI, and serves the UI and API from one Express process.
+
+Create a Railway service from this GitHub repo and set these variables:
+
+```text
+POSTHOG_PERSONAL_API_KEY=...
+POSTHOG_PROJECT_ID=...
+POSTHOG_API_HOST=https://us.posthog.com
+GEMINI_PROVIDER=ai-studio
+GOOGLE_AI_API_KEY=...
+GEMINI_REPLAY_MODEL=gemini-3.5-flash
+POSTHOG_SNAPSHOT_CHUNK_SIZE=20
+POSTHOG_MAX_THROTTLE_WAIT_SECONDS=90
+```
+
+Railway provides `PORT`; do not hard-code it. In production the server binds `0.0.0.0:$PORT`.
+
+For an automated scheduled loop, create a second Railway service from the same repo, set the same variables, set its start command to a one-off analysis, and configure Railway's **Cron Schedule**:
+
+```bash
+npm run analyze -- --count 10 --parallelism 2 --speed 12 --candidate-limit 100 --max-age-days 1 --min-active-seconds 20 --min-activity-score 10 --max-per-user 1
+```
+
+Railway cron services should exit when the task finishes. `npm run analyze` already does that.
+
 ## Outputs
 
 Each run writes to `artifacts/jobs/<job-id>/`.
