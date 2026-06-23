@@ -32,7 +32,7 @@ Replay Lens is an independent open-source tool. It is not affiliated with, spons
 - Embed generated replay videos next to Gemini findings.
 - Download job results as JSON or an agent-ready Markdown handoff.
 - Run the same analysis pipeline from cron with `npm run analyze`.
-- Run a built-in scheduled server loop that skips already-seen replay IDs, stores merged flagged issues, and sends Slack summaries when configured.
+- Run a built-in scheduled server loop that skips already-seen replay IDs, stores merged flagged issues, and sends Slack summaries with PostHog replay and Replay Lens result links when configured.
 
 ## Requirements
 
@@ -79,7 +79,7 @@ Candidate filters control which PostHog recordings are loaded: user, URL, max ag
 
 The UI shows allowed ranges and blocks invalid batch starts. The API and cron runner clamp the same values before a run starts.
 
-- Videos: `1-25`; parallel jobs: `1-5`; candidate pool: `10-250` and never below the requested video count.
+- Videos: `1-30`; parallel jobs: `1-5`; candidate pool: `10-250` and never below the requested video count.
 - Replay speed: `1-60x`; `8-16x` is usually a good range for compact clips.
 - Replay speed is treated as the minimum render speed. Long active-compressed sessions may be raised automatically up to `60x` to fit useful activity into the clip cap.
 - Clip length: min clip `6-60` seconds, max clip `10-90` seconds; max clip is raised if cron passes a lower value than min clip.
@@ -152,6 +152,9 @@ AUTOMATION_MAX_AGE_DAYS=7
 AUTOMATION_MIN_ACTIVE_SECONDS=20
 AUTOMATION_MIN_ACTIVITY_SCORE=10
 AUTOMATION_MAX_PER_USER=1
+AUTOMATION_FILTER_STALE_RECORDINGS=true
+AUTOMATION_DEDUPE_SIMILAR=true
+AUTOMATION_DIVERSIFY_USERS=true
 SLACK_WEBHOOK_URL=...
 ```
 

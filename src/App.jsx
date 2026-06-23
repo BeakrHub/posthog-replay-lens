@@ -57,7 +57,7 @@ const DEFAULT_FORM = {
 };
 
 const FORM_LIMITS = {
-  count: { label: "Videos", min: 1, max: 25 },
+  count: { label: "Videos", min: 1, max: 30 },
   parallelism: { label: "Parallel jobs", min: 1, max: 5 },
   candidateLimit: { label: "Candidate pool", min: 10, max: 250 },
   speed: { label: "Speed", min: 1, max: 60, suffix: "x" },
@@ -1091,6 +1091,7 @@ function SynthesisPanel({ synthesis }) {
 }
 
 export default function App() {
+  const initialJobId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("job") || "" : "";
   const [health, setHealth] = useState(null);
   const [recordings, setRecordings] = useState([]);
   const [candidateDiagnostics, setCandidateDiagnostics] = useState(null);
@@ -1099,7 +1100,7 @@ export default function App() {
   const [project, setProject] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [automation, setAutomation] = useState(null);
-  const [activeJobId, setActiveJobId] = useState("");
+  const [activeJobId, setActiveJobId] = useState(initialJobId);
   const [form, setForm] = useState(DEFAULT_FORM);
   const [connectionForm, setConnectionForm] = useState(DEFAULT_CONNECTION_FORM);
   const [cronSchedule, setCronSchedule] = useState(CRON_PRESETS[2].value);
@@ -1510,7 +1511,7 @@ export default function App() {
               label="Videos to analyze"
               value={form.count}
               min={1}
-              max={25}
+              max={30}
               hint={limitHint("count")}
               invalid={invalidFields.has("count")}
               onChange={(value) => updateForm("count", value)}

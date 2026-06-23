@@ -58,7 +58,7 @@ export function automationConfigFromEnv(env = process.env) {
     enabled: boolValue(env.AUTOMATION_ENABLED, false),
     runOnStart: boolValue(env.AUTOMATION_RUN_ON_START, false),
     intervalHours: numberValue(env.AUTOMATION_INTERVAL_HOURS, 5, 0.25, 168),
-    count: numberValue(env.AUTOMATION_COUNT, 10, 1, 25),
+    count: numberValue(env.AUTOMATION_COUNT, 10, 1, 30),
     parallelism: numberValue(env.AUTOMATION_PARALLELISM, 2, 1, 5),
     candidateLimit: numberValue(env.AUTOMATION_CANDIDATE_LIMIT, 150, 10, 250),
     speed: numberValue(env.AUTOMATION_SPEED, 12, 1, 60),
@@ -68,6 +68,10 @@ export function automationConfigFromEnv(env = process.env) {
     minClicks: numberValue(env.AUTOMATION_MIN_CLICKS, 0, 0, 10000),
     maxAgeDays: numberValue(env.AUTOMATION_MAX_AGE_DAYS, 7, 0, 365),
     maxPerUser: numberValue(env.AUTOMATION_MAX_PER_USER, 1, 0, 25),
+    includeOngoing: boolValue(env.AUTOMATION_INCLUDE_ONGOING, false),
+    filterStaleRecordings: boolValue(env.AUTOMATION_FILTER_STALE_RECORDINGS, true),
+    dedupeSimilar: boolValue(env.AUTOMATION_DEDUPE_SIMILAR, true),
+    diversifyUsers: boolValue(env.AUTOMATION_DIVERSIFY_USERS, true),
     minClipSeconds: numberValue(env.AUTOMATION_MIN_CLIP_SECONDS, 12, 6, 60),
     maxClipSeconds: numberValue(env.AUTOMATION_MAX_CLIP_SECONDS, 45, 10, 90),
     urlIncludes: stringValue(env.AUTOMATION_URL_INCLUDES),
@@ -104,6 +108,10 @@ export function automationPublicConfig(config) {
     minActivityScore: config.minActivityScore,
     maxAgeDays: config.maxAgeDays,
     maxPerUser: config.maxPerUser,
+    includeOngoing: config.includeOngoing,
+    filterStaleRecordings: config.filterStaleRecordings,
+    dedupeSimilar: config.dedupeSimilar,
+    diversifyUsers: config.diversifyUsers,
     minClipSeconds: config.minClipSeconds,
     maxClipSeconds: config.maxClipSeconds,
     urlIncludes: config.urlIncludes,
@@ -169,9 +177,10 @@ export function buildAutomationJobConfig(config, state) {
     userIncludes: config.userIncludes,
     geminiModel: config.geminiModel,
     analysisFocus: config.analysisFocus,
-    filterStaleRecordings: true,
-    dedupeSimilar: true,
-    diversifyUsers: true,
+    includeOngoing: config.includeOngoing,
+    filterStaleRecordings: config.filterStaleRecordings,
+    dedupeSimilar: config.dedupeSimilar,
+    diversifyUsers: config.diversifyUsers,
     excludeRecordingIds: state.seenRecordingIds || []
   };
 }
@@ -361,10 +370,31 @@ export function updateStateFromJob(state, job, config) {
   return { state: next, newIssues };
 }
 
+function slackLink(url, label) {
+  if (!url) return label;
+  return `<${url}|${String(label || url).replace(/[<>|]/g, " ")}>`;
+}
+
+function issuePostHogLinks(issue) {
+  return (issue.affectedRecordings || [])
+    .map((recording) => recording.posthogUrl ? slackLink(recording.posthogUrl, recording.startedAt ? `${recording.user} ${recording.startedAt.slice(0, 10)}` : recording.user) : "")
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function resultPostHogLinks(job) {
+  return (job.results || [])
+    .map((result, index) => result.recording?.posthogUrl ? slackLink(result.recording.posthogUrl, `replay ${index + 1}`) : "")
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
 function issueLine(issue, index) {
   const severity = issue.severity && issue.severity !== "unknown" ? ` (${issue.severity})` : "";
   const recordings = issue.affectedRecordingIds?.length ? ` - ${issue.affectedRecordingIds.length} replay${issue.affectedRecordingIds.length === 1 ? "" : "s"}` : "";
-  return `${index + 1}. ${issue.title}${severity}${recordings}`;
+  const posthogLinks = issuePostHogLinks(issue);
+  const links = posthogLinks.length ? ` - PostHog: ${posthogLinks.join(", ")}` : "";
+  return `${index + 1}. ${issue.title}${severity}${recordings}${links}`;
 }
 
 export function buildSlackText({ job, config, newIssues, state }) {
@@ -378,9 +408,12 @@ export function buildSlackText({ job, config, newIssues, state }) {
   } else {
     lines.push("No exact bugs were flagged in this run.");
   }
-  if (config.baseUrl) lines.push(`Dashboard: ${config.baseUrl}`);
+  const posthogLinks = resultPostHogLinks(job);
+  if (posthogLinks.length) lines.push(`PostHog replays: ${posthogLinks.join(", ")}`);
+  const reviewUrl = jobUrl(config, job.id);
+  if (reviewUrl) lines.push(`Review page: ${slackLink(reviewUrl, "Replay Lens batch results")}`);
   const handoff = config.baseUrl ? `${config.baseUrl}/api/jobs/${encodeURIComponent(job.id)}/agent-handoff.md` : "";
-  if (handoff) lines.push(`Agent handoff: ${handoff}`);
+  if (handoff) lines.push(`Agent handoff: ${slackLink(handoff, "agent Markdown")}`);
   lines.push(`Seen replay IDs tracked: ${state.seenRecordingIds?.length || 0}`);
   return lines.join("\n");
 }

@@ -79,7 +79,7 @@ export function splitTerms(value) {
 
 export function buildJobConfig(input = {}) {
   const config = {
-    count: clampNumber(input.count, DEFAULT_JOB_CONFIG.count, 1, 25),
+    count: clampNumber(input.count, DEFAULT_JOB_CONFIG.count, 1, 30),
     parallelism: clampNumber(input.parallelism, DEFAULT_JOB_CONFIG.parallelism, 1, 5),
     candidateLimit: clampNumber(input.candidateLimit, DEFAULT_JOB_CONFIG.candidateLimit, 10, 250),
     recordingIds: Array.isArray(input.recordingIds) ? input.recordingIds.map(String).filter(Boolean) : [],
