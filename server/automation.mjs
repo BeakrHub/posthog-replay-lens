@@ -334,9 +334,6 @@ export function updateStateFromJob(state, job, config) {
   for (const result of job.results || []) {
     if (result.recording?.id) seen.add(result.recording.id);
   }
-  for (const failure of job.failures || []) {
-    if (failure.recording?.id) seen.add(failure.recording.id);
-  }
   next.seenRecordingIds = [...seen];
 
   const newIssues = extractIssues(job, config);
